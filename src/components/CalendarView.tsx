@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, X, TrendingUp, TrendingDown } from 'lucide-react';
 import type { Transaction } from '../hooks/useLedger';
-import { useToday } from '../hooks/useToday';
 
 interface CalendarViewProps {
   transactions: Transaction[];
@@ -19,7 +18,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   onAddForDate,
 }) => {
   const todayDate = new Date();
-  const today = useToday();
   const [year, setYear] = useState(todayDate.getFullYear());
   const [month, setMonth] = useState(todayDate.getMonth()); // 0-indexed
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -56,7 +54,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
   /* ── 선택 날짜의 거래 + 소계 ── */
   const selectedTxs = selectedDate ? (txByDate[selectedDate] ?? []) : [];
-  const selectedIsScheduled = Boolean(selectedDate && selectedDate > today);
   const selectedSummary = selectedTxs.reduce(
     (acc, tx) => {
       if (tx.type === 'income') acc.income += tx.amount;
@@ -70,13 +67,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   const monthSummary = useMemo(() => {
     let income = 0, expense = 0;
     transactions.forEach((tx) => {
-      if (tx.date.startsWith(monthStr) && tx.date <= today) {
+      if (tx.date.startsWith(monthStr)) {
         if (tx.type === 'income') income += tx.amount;
         else expense += tx.amount;
       }
     });
     return { income, expense };
-  }, [transactions, monthStr, today]);
+  }, [transactions, monthStr]);
 
   const prevMonth = () => {
     if (month === 0) { setYear(y => y - 1); setMonth(11); }
@@ -200,7 +197,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
               const dateStr = makeDateStr(day);
               const dayTxs = txByDate[dateStr] ?? [];
-              const isScheduled = dateStr > today;
               const dayIncome = dayTxs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
               const dayExpense = dayTxs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
               const isSelected = selectedDate === dateStr;
@@ -253,30 +249,30 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                       <div style={{
                         fontSize: '10px',
                         fontWeight: 700,
-                        color: isScheduled ? '#8b5cf6' : 'var(--income)',
-                        background: isScheduled ? 'rgba(139,92,246,0.12)' : 'var(--income-bg)',
+                        color: 'var(--income)',
+                        background: 'var(--income-bg)',
                         borderRadius: '3px',
                         padding: '1px 4px',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
                       }}>
-                        {isScheduled ? '예정 +' : '+'}{formatNumber(dayIncome)}
+                        +{formatNumber(dayIncome)}
                       </div>
                     )}
                     {dayExpense > 0 && (
                       <div style={{
                         fontSize: '10px',
                         fontWeight: 700,
-                        color: isScheduled ? '#8b5cf6' : 'var(--expense)',
-                        background: isScheduled ? 'rgba(139,92,246,0.12)' : 'var(--expense-bg)',
+                        color: 'var(--expense)',
+                        background: 'var(--expense-bg)',
                         borderRadius: '3px',
                         padding: '1px 4px',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
                       }}>
-                        {isScheduled ? '예정 -' : '-'}{formatNumber(dayExpense)}
+                        -{formatNumber(dayExpense)}
                       </div>
                     )}
                     {/* 거래 건수 도트 */}
@@ -353,16 +349,16 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                 background: 'var(--bg-app)',
               }}>
                 <span style={{ fontSize: '12px', color: 'var(--income)', fontWeight: 700 }}>
-                  {selectedIsScheduled ? '예정 수입' : '수입'} +{formatNumber(selectedSummary.income)}원
+                  수입 +{formatNumber(selectedSummary.income)}원
                 </span>
                 <span style={{ fontSize: '12px', color: 'var(--expense)', fontWeight: 700 }}>
-                  {selectedIsScheduled ? '예정 지출' : '지출'} -{formatNumber(selectedSummary.expense)}원
+                  지출 -{formatNumber(selectedSummary.expense)}원
                 </span>
                 <span style={{
                   fontSize: '12px', fontWeight: 700,
                   color: selectedSummary.income - selectedSummary.expense >= 0 ? 'var(--primary)' : 'var(--expense)',
                 }}>
-                  {selectedIsScheduled ? '예정 차액' : '잔액'} {selectedSummary.income - selectedSummary.expense >= 0 ? '+' : ''}{formatNumber(selectedSummary.income - selectedSummary.expense)}원
+                  잔액 {selectedSummary.income - selectedSummary.expense >= 0 ? '+' : ''}{formatNumber(selectedSummary.income - selectedSummary.expense)}원
                 </span>
               </div>
             )}
@@ -388,9 +384,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                         <span className={`badge ${tx.type}`} style={{ fontSize: '11px' }}>
                           {tx.type === 'income' ? '수입' : '지출'}
                         </span>
-                        {tx.date > today && (
-                          <span style={{ fontSize: '10px', color: '#8b5cf6', fontWeight: 700 }}>예정 · 미반영</span>
-                        )}
                         {tx.recurring && (
                           <span style={{ fontSize: '10px', color: '#8b5cf6', fontWeight: 700 }}>🔄</span>
                         )}

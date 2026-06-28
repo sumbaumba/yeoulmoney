@@ -251,7 +251,7 @@ function App() {
 
         {activeTab === 'transactions' && (
           <TransactionList
-            transactions={transactions}
+            transactions={effectiveTransactions}
             onEdit={handleOpenEditForm}
             onDelete={deleteTransaction}
           />
@@ -259,7 +259,7 @@ function App() {
 
         {activeTab === 'calendar' && (
           <CalendarView
-            transactions={transactions}
+            transactions={effectiveTransactions}
             onEdit={handleOpenEditForm}
             onDelete={deleteTransaction}
             onAddForDate={handleOpenAddFormForDate}
