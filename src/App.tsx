@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { LayoutDashboard, FileText, Settings2, PlusCircle, Sun, Moon, Database, CalendarDays, LogOut } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import { useLedger } from './hooks/useLedger';
@@ -11,6 +11,7 @@ import { TransactionForm } from './components/TransactionForm';
 import { CalendarView } from './components/CalendarView';
 import { AuthScreen, SupabaseSetupScreen } from './components/AuthScreen';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
+import { useToday } from './hooks/useToday';
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -57,6 +58,11 @@ function App() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [prefillDate, setPrefillDate] = useState<string | null>(null);
+  const today = useToday();
+  const effectiveTransactions = useMemo(
+    () => transactions.filter((transaction) => transaction.date <= today),
+    [transactions, today],
+  );
   
   // Theme state initialization (default to dark for a high-tech modern aesthetic)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -236,7 +242,7 @@ function App() {
         {/* Tab Router Switch */}
         {activeTab === 'dashboard' && (
           <Dashboard
-            transactions={transactions}
+            transactions={effectiveTransactions}
             budgets={budgets}
             companyInfo={companyInfo}
             onNavigateToTx={() => setActiveTab('transactions')}
@@ -263,7 +269,7 @@ function App() {
         {activeTab === 'budgets' && (
           <BudgetSettings
             budgets={budgets}
-            transactions={transactions}
+            transactions={effectiveTransactions}
             onSetBudget={setBudget}
           />
         )}

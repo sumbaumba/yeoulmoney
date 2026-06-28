@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Edit2, Trash2, Search, Calendar } from 'lucide-react';
 import { INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '../hooks/useLedger';
 import type { Transaction } from '../hooks/useLedger';
+import { useToday } from '../hooks/useToday';
 
 interface TransactionListProps {
   transactions: Transaction[];
@@ -14,6 +15,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   onEdit,
   onDelete
 }) => {
+  const today = useToday();
   // Filter States
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
@@ -66,7 +68,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const filteredSummary = useMemo(() => {
     let income = 0;
     let expense = 0;
-    filteredTransactions.forEach((tx) => {
+    filteredTransactions.filter((tx) => tx.date <= today).forEach((tx) => {
       if (tx.type === 'income') {
         income += tx.amount;
       } else {
@@ -74,7 +76,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       }
     });
     return { income, expense, balance: income - expense };
-  }, [filteredTransactions]);
+  }, [filteredTransactions, today]);
+
+  const scheduledCount = filteredTransactions.filter((tx) => tx.date > today).length;
 
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat('ko-KR').format(num);
@@ -231,8 +235,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({
           검색 결과: <strong style={{ color: 'var(--text-main)' }}>{filteredTransactions.length}</strong>건의 내역
         </div>
         <div style={{ display: 'flex', gap: '16px', fontSize: '13px', fontWeight: 600 }}>
-          <span style={{ color: 'var(--income)' }}>수입 총합: +{formatNumber(filteredSummary.income)}원</span>
-          <span style={{ color: 'var(--expense)' }}>지출 총합: -{formatNumber(filteredSummary.expense)}원</span>
+          {scheduledCount > 0 && <span style={{ color: '#8b5cf6' }}>예정 {scheduledCount}건 제외</span>}
+          <span style={{ color: 'var(--income)' }}>반영 수입: +{formatNumber(filteredSummary.income)}원</span>
+          <span style={{ color: 'var(--expense)' }}>반영 지출: -{formatNumber(filteredSummary.expense)}원</span>
           <span style={{ color: filteredSummary.balance >= 0 ? 'var(--primary)' : 'var(--expense)' }}>
             순이익: {filteredSummary.balance >= 0 ? '+' : ''}{formatNumber(filteredSummary.balance)}원
           </span>
@@ -271,6 +276,13 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                   <td>
                     <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                       {tx.title}
+                      {tx.date > today && (
+                        <span style={{
+                          fontSize: '10px', fontWeight: 700, padding: '1px 5px',
+                          borderRadius: '4px', background: 'rgba(139,92,246,0.12)',
+                          color: '#8b5cf6', whiteSpace: 'nowrap'
+                        }}>예정 · 미반영</span>
+                      )}
                       {tx.recurring && (
                         <span style={{
                           fontSize: '10px', fontWeight: 700, padding: '1px 5px',
