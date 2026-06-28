@@ -4,11 +4,13 @@ import type { CompanyInfo } from '../hooks/useLedger';
 
 interface BackupManagerProps {
   companyInfo: CompanyInfo;
-  onUpdateCompany: (info: CompanyInfo) => void;
+  onUpdateCompany: (info: CompanyInfo) => Promise<void>;
   onExportCSV: () => void;
   onExportJSON: () => void;
-  onImportJSON: (json: string) => boolean;
-  onResetData: () => void;
+  onImportJSON: (json: string) => Promise<boolean>;
+  legacyDataAvailable: boolean;
+  onMigrateLegacyData: () => Promise<boolean>;
+  onResetData: () => Promise<void>;
 }
 
 export const BackupManager: React.FC<BackupManagerProps> = ({
@@ -17,6 +19,8 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
   onExportCSV,
   onExportJSON,
   onImportJSON,
+  legacyDataAvailable,
+  onMigrateLegacyData,
   onResetData
 }) => {
   const [compName, setCompName] = useState(companyInfo.name);
@@ -24,13 +28,13 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
   const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleUpdateProfile = (e: React.FormEvent) => {
+  const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!compName.trim()) {
       alert('회사 이름을 입력해 주세요.');
       return;
     }
-    onUpdateCompany({
+    await onUpdateCompany({
       name: compName.trim(),
       currency: compCurrency
     });
@@ -42,9 +46,9 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const content = event.target?.result as string;
-      const success = onImportJSON(content);
+      const success = await onImportJSON(content);
       if (success) {
         setImportStatus('success');
         setTimeout(() => setImportStatus('idle'), 4000);
@@ -60,7 +64,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
     }
   };
 
-  const handleResetClick = () => {
+  const handleResetClick = async () => {
     const firstConfirm = window.confirm(
       '경고: 모든 가계부 거래 내역과 설정된 예산이 완전히 영구 삭제됩니다. 계속하시겠습니까?'
     );
@@ -69,10 +73,19 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
         '정말로 삭제하시겠습니까? 백업본이 없다면 데이터를 복구할 수 없습니다.'
       );
       if (secondConfirm) {
-        onResetData();
+        await onResetData();
         alert('모든 가계부 데이터가 성공적으로 초기화되었습니다.');
       }
     }
+  };
+
+  const handleLegacyMigration = async () => {
+    const confirmed = window.confirm(
+      '이 브라우저의 기존 장부로 현재 공유 DB 내용을 교체합니다. 먼저 공유 DB를 백업했는지 확인해 주세요. 계속하시겠습니까?'
+    );
+    if (!confirmed) return;
+    const success = await onMigrateLegacyData();
+    alert(success ? '기존 장부를 공유 DB로 옮겼습니다.' : '기존 장부를 옮기지 못했습니다.');
   };
 
   return (
@@ -118,6 +131,25 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
           </div>
         </form>
       </div>
+
+      {legacyDataAvailable && (
+        <div className="settings-card" style={{ borderColor: 'var(--primary)' }}>
+          <div className="settings-card-header">
+            <h3 className="settings-card-title">기존 브라우저 장부 발견</h3>
+            <p className="settings-card-desc">이 브라우저에 저장되어 있던 기존 장부를 공유 DB로 한 번 옮길 수 있습니다.</p>
+          </div>
+          <div className="settings-card-body">
+            <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+              공유할 기준 데이터가 맞는지 확인한 뒤 한 명만 실행하세요. 실행하면 현재 공유 DB 내용은 이 브라우저의 기존 장부로 교체됩니다.
+            </p>
+            <div>
+              <button className="btn btn-primary" onClick={handleLegacyMigration} style={{ gap: '8px' }}>
+                <Upload size={15} /> 기존 장부를 공유 DB로 이전
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Backup and CSV Export Card */}
       <div className="settings-card">
@@ -195,7 +227,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
         </div>
         <div className="settings-card-body">
           <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-            이 버튼을 클릭하면 로컬 저장소(`localStorage`)에 저장된 모든 수입/지출 내역과 회사명 설정, 카테고리 예산이 영구적으로 즉시 삭제됩니다. 이 동작은 취소할 수 없습니다.
+            이 버튼을 클릭하면 공유 데이터베이스에 저장된 모든 수입/지출 내역과 회사명 설정, 카테고리 예산이 영구적으로 즉시 삭제됩니다. 이 동작은 취소할 수 없습니다.
           </p>
           <div>
             <button className="btn btn-danger" onClick={handleResetClick} style={{ gap: '8px' }}>

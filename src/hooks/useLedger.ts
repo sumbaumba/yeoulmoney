@@ -1,11 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { supabase } from '../lib/supabase';
 
 export interface Transaction {
   id: string;
   type: 'income' | 'expense';
   amount: number;
+  baseAmount: number;
+  vatIncluded: boolean;
+  recurring: boolean;
+  recurringGroupId?: string;
   category: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   method: 'card' | 'transfer' | 'cash';
   title: string;
   memo: string;
@@ -21,12 +26,32 @@ export interface CompanyInfo {
   currency: string;
 }
 
-export const INCOME_CATEGORIES = [
-  '매출/판매액',
-  '투자 유치',
-  '정부지원금',
-  '기타 수입'
-];
+interface DbTransaction {
+  id: string;
+  type: Transaction['type'];
+  amount: number;
+  base_amount: number;
+  vat_included: boolean;
+  recurring: boolean;
+  recurring_group_id: string | null;
+  category: string;
+  date: string;
+  method: Transaction['method'];
+  title: string;
+  memo: string;
+}
+
+interface DbBudget {
+  category: string;
+  limit_amount: number;
+}
+
+interface DbCompanyInfo {
+  name: string;
+  currency: string;
+}
+
+export const INCOME_CATEGORIES = ['매출/판매액', '투자 유치', '정부지원금', '기타 수입'];
 
 export const EXPENSE_CATEGORIES = [
   '인건비/급여',
@@ -36,131 +61,7 @@ export const EXPENSE_CATEGORIES = [
   '소프트웨어/SaaS',
   '사업 운영비',
   '세금/공과금',
-  '기타 지출'
-];
-
-// Seed initial data for first-time users to make the UI look rich and functional
-const MOCK_TRANSACTIONS: Transaction[] = [
-  {
-    id: 'tx-1',
-    type: 'expense',
-    amount: 3500000,
-    category: '인건비/급여',
-    date: '2026-06-25',
-    method: 'transfer',
-    title: '6월 직원 급여 지급',
-    memo: '개발팀 및 경영진 정기 급여 이체'
-  },
-  {
-    id: 'tx-2',
-    type: 'income',
-    amount: 8700000,
-    category: '매출/판매액',
-    date: '2026-06-23',
-    method: 'transfer',
-    title: '여울 솔루션 1차 납품 대금',
-    memo: '(주)스타트업파트너스 정산 금액 입금'
-  },
-  {
-    id: 'tx-3',
-    type: 'expense',
-    amount: 1200000,
-    category: '사무실 임차료/공과금',
-    date: '2026-06-20',
-    method: 'transfer',
-    title: '6월 여울 공유오피스 임차료',
-    memo: '서울벤처타워 6층 정기 결제 건'
-  },
-  {
-    id: 'tx-4',
-    type: 'expense',
-    amount: 850000,
-    category: '마케팅/광고',
-    date: '2026-06-18',
-    method: 'card',
-    title: '구글 및 페이스북 타겟 광고비',
-    memo: '신규 플랫폼 런칭 마케팅 캠페인'
-  },
-  {
-    id: 'tx-5',
-    type: 'income',
-    amount: 5000000,
-    category: '정부지원금',
-    date: '2026-06-15',
-    method: 'transfer',
-    title: '청년창업사관학교 지원금',
-    memo: '2026년도 사업화 자금 2차 교부금'
-  },
-  {
-    id: 'tx-6',
-    type: 'expense',
-    amount: 450000,
-    category: '소프트웨어/SaaS',
-    date: '2026-06-10',
-    method: 'card',
-    title: 'AWS 클라우드 인프라 비용',
-    memo: '서버 호스팅 및 Slack, Notion 워크스페이스 구독'
-  },
-  {
-    id: 'tx-7',
-    type: 'expense',
-    amount: 1500000,
-    category: '자재/원가',
-    date: '2026-06-05',
-    method: 'transfer',
-    title: '기기 조립 원부자재 매입',
-    memo: '협력사 하드웨어 센서 부품 100세트'
-  },
-  {
-    id: 'tx-8',
-    type: 'expense',
-    amount: 3500000,
-    category: '인건비/급여',
-    date: '2026-05-25',
-    method: 'transfer',
-    title: '5월 직원 급여 지급',
-    memo: '임직원 급여 정기 이체'
-  },
-  {
-    id: 'tx-9',
-    type: 'income',
-    amount: 6400000,
-    category: '매출/판매액',
-    date: '2026-05-24',
-    method: 'transfer',
-    title: '신규 에이전시 웹 구축 선금',
-    memo: '계약금 30% 입금 확인'
-  },
-  {
-    id: 'tx-10',
-    type: 'expense',
-    amount: 1200000,
-    category: '사무실 임차료/공과금',
-    date: '2026-05-20',
-    method: 'transfer',
-    title: '5월 여울 공유오피스 임차료',
-    memo: '서울벤처타워 6층 정기 결제 건'
-  },
-  {
-    id: 'tx-11',
-    type: 'expense',
-    amount: 600000,
-    category: '마케팅/광고',
-    date: '2026-05-12',
-    method: 'card',
-    title: '디스플레이 배너 마케팅 대금',
-    memo: '네이버 키워드 광고 및 GDN 캠페인'
-  },
-  {
-    id: 'tx-12',
-    type: 'expense',
-    amount: 320000,
-    category: '소프트웨어/SaaS',
-    date: '2026-05-02',
-    method: 'card',
-    title: 'AWS 클라우드 인프라 비용',
-    memo: '서버 호스팅 및 SaaS 툴 구독'
-  }
+  '기타 지출',
 ];
 
 const DEFAULT_BUDGETS: Budget[] = [
@@ -171,195 +72,307 @@ const DEFAULT_BUDGETS: Budget[] = [
   { category: '소프트웨어/SaaS', limit: 500000 },
   { category: '사업 운영비', limit: 500000 },
   { category: '세금/공과금', limit: 300000 },
-  { category: '기타 지출', limit: 200000 }
+  { category: '기타 지출', limit: 200000 },
 ];
 
-const DEFAULT_COMPANY: CompanyInfo = {
-  name: '여울 (Yeoul)',
-  currency: '₩'
+const DEFAULT_COMPANY: CompanyInfo = { name: '여울 (Yeoul)', currency: '₩' };
+
+const fromDbTransaction = (row: DbTransaction): Transaction => ({
+  id: row.id,
+  type: row.type,
+  amount: Number(row.amount),
+  baseAmount: Number(row.base_amount),
+  vatIncluded: row.vat_included,
+  recurring: row.recurring,
+  recurringGroupId: row.recurring_group_id ?? undefined,
+  category: row.category,
+  date: row.date,
+  method: row.method,
+  title: row.title,
+  memo: row.memo,
+});
+
+const toDbTransaction = (transaction: Transaction): DbTransaction => ({
+  id: transaction.id,
+  type: transaction.type,
+  amount: transaction.amount,
+  base_amount: transaction.baseAmount,
+  vat_included: transaction.vatIncluded,
+  recurring: transaction.recurring,
+  recurring_group_id: transaction.recurringGroupId ?? null,
+  category: transaction.category,
+  date: transaction.date,
+  method: transaction.method,
+  title: transaction.title,
+  memo: transaction.memo,
+});
+
+const addMonthsToDate = (date: string, months: number) => {
+  const [year, month, day] = date.split('-').map(Number);
+  const firstOfTargetMonth = new Date(Date.UTC(year, month - 1 + months, 1));
+  const targetYear = firstOfTargetMonth.getUTCFullYear();
+  const targetMonth = firstOfTargetMonth.getUTCMonth();
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  const targetDay = Math.min(day, lastDay);
+  return `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
 };
 
-export const useLedger = () => {
+const reportError = (message: string, error: unknown) => {
+  console.error(message, error);
+  window.alert(message);
+};
+
+export const useLedger = (enabled: boolean) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo>(DEFAULT_COMPANY);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
+  const [legacyDataAvailable, setLegacyDataAvailable] = useState(() =>
+    Boolean(localStorage.getItem('yeoul_ledger_transactions')),
+  );
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Load initial data from localStorage or fallback to seeds
-  useEffect(() => {
-    try {
-      const storedTxs = localStorage.getItem('yeoul_ledger_transactions');
-      const storedBudgets = localStorage.getItem('yeoul_ledger_budgets');
-      const storedCompany = localStorage.getItem('yeoul_ledger_company');
+  const loadLedger = useCallback(async () => {
+    if (!enabled || !supabase) return;
 
-      if (storedTxs) {
-        setTransactions(JSON.parse(storedTxs));
-      } else {
-        setTransactions(MOCK_TRANSACTIONS);
-        localStorage.setItem('yeoul_ledger_transactions', JSON.stringify(MOCK_TRANSACTIONS));
-      }
-
-      if (storedBudgets) {
-        setBudgets(JSON.parse(storedBudgets));
-      } else {
-        setBudgets(DEFAULT_BUDGETS);
-        localStorage.setItem('yeoul_ledger_budgets', JSON.stringify(DEFAULT_BUDGETS));
-      }
-
-      if (storedCompany) {
-        setCompanyInfo(JSON.parse(storedCompany));
-      } else {
-        setCompanyInfo(DEFAULT_COMPANY);
-        localStorage.setItem('yeoul_ledger_company', JSON.stringify(DEFAULT_COMPANY));
-      }
-    } catch (e) {
-      console.error('Failed to load ledger data from localStorage:', e);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Save changes helper
-  const saveTransactionsState = (newTxs: Transaction[]) => {
-    setTransactions(newTxs);
-    localStorage.setItem('yeoul_ledger_transactions', JSON.stringify(newTxs));
-  };
-
-  const saveBudgetsState = (newBudgets: Budget[]) => {
-    setBudgets(newBudgets);
-    localStorage.setItem('yeoul_ledger_budgets', JSON.stringify(newBudgets));
-  };
-
-  const saveCompanyState = (newCompany: CompanyInfo) => {
-    setCompanyInfo(newCompany);
-    localStorage.setItem('yeoul_ledger_company', JSON.stringify(newCompany));
-  };
-
-  // Transaction Actions
-  const addTransaction = (tx: Omit<Transaction, 'id'>) => {
-    const newTx: Transaction = {
-      ...tx,
-      id: `tx-${Date.now()}`
-    };
-    const updated = [newTx, ...transactions].sort((a, b) => b.date.localeCompare(a.date));
-    saveTransactionsState(updated);
-  };
-
-  const updateTransaction = (id: string, updatedFields: Partial<Transaction>) => {
-    const updated = transactions.map((tx) =>
-      tx.id === id ? { ...tx, ...updatedFields } : tx
-    ).sort((a, b) => b.date.localeCompare(a.date));
-    saveTransactionsState(updated);
-  };
-
-  const deleteTransaction = (id: string) => {
-    const updated = transactions.filter((tx) => tx.id !== id);
-    saveTransactionsState(updated);
-  };
-
-  // Budget Actions
-  const setBudget = (category: string, limit: number) => {
-    let updated: Budget[];
-    const exists = budgets.some((b) => b.category === category);
-    if (exists) {
-      updated = budgets.map((b) => (b.category === category ? { ...b, limit } : b));
-    } else {
-      updated = [...budgets, { category, limit }];
-    }
-    saveBudgetsState(updated);
-  };
-
-  // Company Actions
-  const updateCompanyInfo = (info: CompanyInfo) => {
-    saveCompanyState(info);
-  };
-
-  // Export to CSV helper
-  const exportToCSV = () => {
-    const headers = ['ID', '구분', '날짜', '카테고리', '금액', '결제수단', '내역', '메모'];
-    const rows = transactions.map((tx) => [
-      tx.id,
-      tx.type === 'income' ? '수입' : '지출',
-      tx.date,
-      tx.category,
-      tx.amount,
-      tx.method === 'card' ? '카드' : tx.method === 'transfer' ? '계좌이체' : '현금',
-      tx.title.replace(/"/g, '""'),
-      tx.memo.replace(/"/g, '""')
+    const [transactionResult, budgetResult, companyResult] = await Promise.all([
+      supabase.from('transactions').select('*').order('date', { ascending: false }),
+      supabase.from('budgets').select('category, limit_amount').order('category'),
+      supabase.from('company_info').select('name, currency').eq('id', 1).limit(1),
     ]);
 
-    // UTF-8 with BOM for Excel compatibility (Korean character encoding support)
-    const BOM = '\uFEFF';
-    const csvContent = BOM + [headers.join(','), ...rows.map(e => e.map(val => `"${val}"`).join(','))].join('\n');
-    
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `${companyInfo.name}_가계부_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const error = transactionResult.error ?? budgetResult.error ?? companyResult.error;
+    if (error) throw error;
+
+    const transactionRows = (transactionResult.data ?? []) as DbTransaction[];
+    const budgetRows = (budgetResult.data ?? []) as DbBudget[];
+    const companyRows = (companyResult.data ?? []) as DbCompanyInfo[];
+
+    setTransactions(transactionRows.map(fromDbTransaction));
+    setBudgets(
+      budgetRows.length
+        ? budgetRows.map((row) => ({ category: row.category, limit: Number(row.limit_amount) }))
+        : DEFAULT_BUDGETS,
+    );
+    setCompanyInfo(companyRows[0] ?? DEFAULT_COMPANY);
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled || !supabase) {
+      setLoading(false);
+      return;
+    }
+
+    let active = true;
+    setLoading(true);
+    loadLedger()
+      .catch((error) => reportError('가계부 데이터를 불러오지 못했습니다.', error))
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    const scheduleRefresh = () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = setTimeout(() => {
+        void loadLedger().catch((error) => console.error('Realtime refresh failed:', error));
+      }, 100);
+    };
+
+    const channel = supabase
+      .channel('ledger-db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'budgets' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'company_info' }, scheduleRefresh)
+      .subscribe();
+
+    return () => {
+      active = false;
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      void supabase?.removeChannel(channel);
+    };
+  }, [enabled, loadLedger]);
+
+  const addTransaction = async (input: Omit<Transaction, 'id'>) => {
+    if (!supabase) return;
+    const recurringGroupId = input.recurring ? crypto.randomUUID() : undefined;
+    const count = input.recurring ? 12 : 1;
+    const rows = Array.from({ length: count }, (_, index) =>
+      toDbTransaction({
+        ...input,
+        id: crypto.randomUUID(),
+        date: addMonthsToDate(input.date, index),
+        recurringGroupId,
+      }),
+    );
+
+    const { error } = await supabase.from('transactions').insert(rows);
+    if (error) reportError('거래를 저장하지 못했습니다.', error);
+    else await loadLedger();
   };
 
-  // Backup state as JSON file
+  const updateTransaction = async (id: string, fields: Partial<Transaction>) => {
+    if (!supabase) return;
+    const current = transactions.find((transaction) => transaction.id === id);
+    if (!current) return;
+
+    const { id: ignoredId, ...row } = toDbTransaction({ ...current, ...fields, id });
+    void ignoredId;
+    const { error } = await supabase
+      .from('transactions')
+      .update({ ...row, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) reportError('거래를 수정하지 못했습니다.', error);
+    else await loadLedger();
+  };
+
+  const deleteTransaction = async (id: string) => {
+    if (!supabase) return;
+    const { error } = await supabase.from('transactions').delete().eq('id', id);
+    if (error) reportError('거래를 삭제하지 못했습니다.', error);
+    else await loadLedger();
+  };
+
+  const setBudget = async (category: string, limit: number) => {
+    if (!supabase) return;
+    const { error } = await supabase.from('budgets').upsert({
+      category,
+      limit_amount: limit,
+      updated_at: new Date().toISOString(),
+    });
+    if (error) reportError('예산을 저장하지 못했습니다.', error);
+    else await loadLedger();
+  };
+
+  const updateCompanyInfo = async (info: CompanyInfo) => {
+    if (!supabase) return;
+    const { error } = await supabase.from('company_info').upsert({
+      id: 1,
+      ...info,
+      updated_at: new Date().toISOString(),
+    });
+    if (error) reportError('회사 정보를 저장하지 못했습니다.', error);
+    else await loadLedger();
+  };
+
+  const exportToCSV = () => {
+    const headers = ['ID', '구분', '날짜', '카테고리', '금액', '결제수단', '내역', '메모'];
+    const rows = transactions.map((transaction) => [
+      transaction.id,
+      transaction.type === 'income' ? '수입' : '지출',
+      transaction.date,
+      transaction.category,
+      transaction.amount,
+      transaction.method === 'card' ? '카드' : transaction.method === 'transfer' ? '계좌이체' : '현금',
+      transaction.title.replace(/"/g, '""'),
+      transaction.memo.replace(/"/g, '""'),
+    ]);
+    const content = '\uFEFF' + [headers, ...rows].map((row) => row.map((value) => `"${value}"`).join(',')).join('\n');
+    downloadFile(content, 'text/csv;charset=utf-8', `${companyInfo.name}_가계부_${today()}.csv`);
+  };
+
   const exportToJSON = () => {
-    const dataStr = JSON.stringify({
-      transactions,
-      budgets,
-      companyInfo,
-      version: '1.0.0',
-      exportedAt: new Date().toISOString()
-    }, null, 2);
-    
-    const blob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `${companyInfo.name}_가계부_백업_${new Date().toISOString().split('T')[0]}.json`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const content = JSON.stringify(
+      { transactions, budgets, companyInfo, version: '2.0.0', exportedAt: new Date().toISOString() },
+      null,
+      2,
+    );
+    downloadFile(content, 'application/json', `${companyInfo.name}_가계부_백업_${today()}.json`);
   };
 
-  // Restore state from uploaded JSON backup
-  const importFromJSON = (jsonString: string): boolean => {
+  const importFromJSON = async (jsonString: string): Promise<boolean> => {
+    if (!supabase) return false;
     try {
-      const data = JSON.parse(jsonString);
-      if (Array.isArray(data.transactions) && Array.isArray(data.budgets)) {
-        // Simple structure validation
-        const isValidTx = data.transactions.every((tx: any) => 
-          typeof tx.id === 'string' && 
-          (tx.type === 'income' || tx.type === 'expense') &&
-          typeof tx.amount === 'number' &&
-          typeof tx.category === 'string' &&
-          typeof tx.date === 'string' &&
-          typeof tx.title === 'string'
-        );
+      const parsed: unknown = JSON.parse(jsonString);
+      if (!parsed || typeof parsed !== 'object') return false;
+      const data = parsed as { transactions?: unknown; budgets?: unknown; companyInfo?: unknown };
+      if (!Array.isArray(data.transactions) || !Array.isArray(data.budgets)) return false;
 
-        if (!isValidTx) {
-          throw new Error('Invalid transaction data format');
-        }
+      const validTransactions = data.transactions.every((value) => {
+        if (!value || typeof value !== 'object') return false;
+        const transaction = value as Record<string, unknown>;
+        return typeof transaction.id === 'string'
+          && (transaction.type === 'income' || transaction.type === 'expense')
+          && typeof transaction.amount === 'number'
+          && typeof transaction.category === 'string'
+          && typeof transaction.date === 'string'
+          && typeof transaction.title === 'string';
+      });
+      if (!validTransactions) return false;
 
-        saveTransactionsState(data.transactions);
-        saveBudgetsState(data.budgets);
-        if (data.companyInfo) {
-          saveCompanyState(data.companyInfo);
-        }
-        return true;
+      const importedTransactions = (data.transactions as Transaction[]).map((transaction) => ({
+        ...transaction,
+        baseAmount: transaction.baseAmount ?? transaction.amount,
+        vatIncluded: transaction.vatIncluded ?? false,
+        recurring: transaction.recurring ?? false,
+        memo: transaction.memo ?? '',
+      }));
+      const importedBudgets = data.budgets as Budget[];
+      const importedCompany = data.companyInfo as CompanyInfo | undefined;
+
+      const deleteResults = await Promise.all([
+        supabase.from('transactions').delete().neq('id', ''),
+        supabase.from('budgets').delete().neq('category', ''),
+      ]);
+      if (deleteResults.some((result) => result.error)) throw deleteResults.find((result) => result.error)?.error;
+
+      if (importedTransactions.length) {
+        const { error } = await supabase.from('transactions').insert(importedTransactions.map(toDbTransaction));
+        if (error) throw error;
       }
-      return false;
-    } catch (e) {
-      console.error('Failed to import backup file:', e);
+      if (importedBudgets.length) {
+        const { error } = await supabase.from('budgets').insert(
+          importedBudgets.map((budget) => ({ category: budget.category, limit_amount: budget.limit })),
+        );
+        if (error) throw error;
+      }
+      if (importedCompany) await updateCompanyInfo(importedCompany);
+      await loadLedger();
+      return true;
+    } catch (error) {
+      console.error('Backup import failed:', error);
       return false;
     }
   };
 
-  // Clear data and start fresh
-  const resetData = () => {
-    saveTransactionsState([]);
-    saveBudgetsState(DEFAULT_BUDGETS);
-    saveCompanyState(DEFAULT_COMPANY);
+  const migrateLegacyData = async (): Promise<boolean> => {
+    try {
+      const storedTransactions = localStorage.getItem('yeoul_ledger_transactions');
+      if (!storedTransactions) return false;
+      const content = JSON.stringify({
+        transactions: JSON.parse(storedTransactions),
+        budgets: JSON.parse(localStorage.getItem('yeoul_ledger_budgets') ?? '[]'),
+        companyInfo: JSON.parse(localStorage.getItem('yeoul_ledger_company') ?? 'null'),
+      });
+      const success = await importFromJSON(content);
+      if (success) {
+        localStorage.removeItem('yeoul_ledger_transactions');
+        localStorage.removeItem('yeoul_ledger_budgets');
+        localStorage.removeItem('yeoul_ledger_company');
+        setLegacyDataAvailable(false);
+      }
+      return success;
+    } catch (error) {
+      console.error('Legacy data migration failed:', error);
+      return false;
+    }
+  };
+
+  const resetData = async () => {
+    if (!supabase) return;
+    const results = await Promise.all([
+      supabase.from('transactions').delete().neq('id', ''),
+      supabase.from('budgets').delete().neq('category', ''),
+      supabase.from('company_info').delete().eq('id', 1),
+    ]);
+    if (results.some((result) => result.error)) {
+      reportError('전체 데이터를 초기화하지 못했습니다.', results.find((result) => result.error)?.error);
+      return;
+    }
+    await supabase.from('budgets').insert(
+      DEFAULT_BUDGETS.map((budget) => ({ category: budget.category, limit_amount: budget.limit })),
+    );
+    await supabase.from('company_info').insert({ id: 1, ...DEFAULT_COMPANY });
+    await loadLedger();
   };
 
   return {
@@ -375,6 +388,19 @@ export const useLedger = () => {
     exportToCSV,
     exportToJSON,
     importFromJSON,
-    resetData
+    legacyDataAvailable,
+    migrateLegacyData,
+    resetData,
   };
+};
+
+const today = () => new Date().toISOString().split('T')[0];
+
+const downloadFile = (content: string, type: string, fileName: string) => {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
 };

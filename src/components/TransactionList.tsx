@@ -269,7 +269,23 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                     {tx.category}
                   </td>
                   <td>
-                    <div style={{ fontWeight: 600 }}>{tx.title}</div>
+                    <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      {tx.title}
+                      {tx.recurring && (
+                        <span style={{
+                          fontSize: '10px', fontWeight: 700, padding: '1px 5px',
+                          borderRadius: '4px', background: 'rgba(139,92,246,0.12)',
+                          color: '#8b5cf6', whiteSpace: 'nowrap'
+                        }}>🔄 매달반복</span>
+                      )}
+                      {tx.vatIncluded && (
+                        <span style={{
+                          fontSize: '10px', fontWeight: 700, padding: '1px 5px',
+                          borderRadius: '4px', background: 'rgba(245,158,11,0.12)',
+                          color: '#f59e0b', whiteSpace: 'nowrap'
+                        }}>% VAT포함</span>
+                      )}
+                    </div>
                     {tx.memo && (
                       <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
                         {tx.memo}
@@ -281,14 +297,21 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                       {getMethodLabel(tx.method)}
                     </span>
                   </td>
-                  <td style={{
-                    textAlign: 'right',
-                    fontWeight: 700,
-                    fontSize: '15px',
-                    color: tx.type === 'income' ? 'var(--income)' : 'var(--expense)',
-                    whiteSpace: 'nowrap'
-                  }}>
+                  <td
+                    style={{
+                      textAlign: 'right',
+                      fontWeight: 700,
+                      fontSize: '15px',
+                      color: tx.type === 'income' ? 'var(--income)' : 'var(--expense)',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
                     {tx.type === 'income' ? '+' : '-'}{formatNumber(tx.amount)}원
+                    {tx.vatIncluded && (
+                      <div style={{ fontSize: '10px', fontWeight: 500, color: '#f59e0b', marginTop: '2px' }}>
+                        공급가 {formatNumber(tx.baseAmount ?? tx.amount)}원 + VAT
+                      </div>
+                    )}
                   </td>
                   <td>
                     <div style={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>

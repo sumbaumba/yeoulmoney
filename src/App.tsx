@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, FileText, Settings2, PlusCircle, Sun, Moon, Database } from 'lucide-react';
+import { LayoutDashboard, FileText, Settings2, PlusCircle, Sun, Moon, Database, CalendarDays, LogOut } from 'lucide-react';
+import type { Session } from '@supabase/supabase-js';
 import { useLedger } from './hooks/useLedger';
 import type { Transaction } from './hooks/useLedger';
 import { Dashboard } from './components/Dashboard';
@@ -7,8 +8,33 @@ import { TransactionList } from './components/TransactionList';
 import { BudgetSettings } from './components/BudgetSettings';
 import { BackupManager } from './components/BackupManager';
 import { TransactionForm } from './components/TransactionForm';
+import { CalendarView } from './components/CalendarView';
+import { AuthScreen, SupabaseSetupScreen } from './components/AuthScreen';
+import { isSupabaseConfigured, supabase } from './lib/supabase';
 
 function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
+
+  useEffect(() => {
+    if (!supabase) {
+      setAuthLoading(false);
+      return;
+    }
+
+    void supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthLoading(false);
+    });
+
+    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setAuthLoading(false);
+    });
+
+    return () => data.subscription.unsubscribe();
+  }, []);
+
   const {
     transactions,
     budgets,
@@ -22,12 +48,15 @@ function App() {
     exportToCSV,
     exportToJSON,
     importFromJSON,
+    legacyDataAvailable,
+    migrateLegacyData,
     resetData
-  } = useLedger();
+  } = useLedger(Boolean(session));
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'budgets' | 'backup'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'calendar' | 'budgets' | 'backup'>('dashboard');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [prefillDate, setPrefillDate] = useState<string | null>(null);
   
   // Theme state initialization (default to dark for a high-tech modern aesthetic)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -50,11 +79,19 @@ function App() {
 
   const handleOpenAddForm = () => {
     setEditingTx(null);
+    setPrefillDate(null);
+    setIsFormOpen(true);
+  };
+
+  const handleOpenAddFormForDate = (date: string) => {
+    setEditingTx(null);
+    setPrefillDate(date);
     setIsFormOpen(true);
   };
 
   const handleOpenEditForm = (tx: Transaction) => {
     setEditingTx(tx);
+    setPrefillDate(null);
     setIsFormOpen(true);
   };
 
@@ -66,7 +103,10 @@ function App() {
     }
   };
 
-  if (loading) {
+  if (!isSupabaseConfigured) return <SupabaseSetupScreen />;
+  if (!authLoading && !session) return <AuthScreen />;
+
+  if (authLoading || loading) {
     return (
       <div style={{
         display: 'flex',
@@ -126,6 +166,13 @@ function App() {
             <span>장부 거래 내역</span>
           </button>
           <button
+            className={`nav-item ${activeTab === 'calendar' ? 'active' : ''}`}
+            onClick={() => setActiveTab('calendar')}
+          >
+            <CalendarDays size={18} />
+            <span>달력 보기</span>
+          </button>
+          <button
             className={`nav-item ${activeTab === 'budgets' ? 'active' : ''}`}
             onClick={() => setActiveTab('budgets')}
           >
@@ -153,6 +200,10 @@ function App() {
             <span>{theme === 'dark' ? '다크 모드' : '라이트 모드'}</span>
             {theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
           </button>
+          <button className="theme-toggle-btn" onClick={() => void supabase?.auth.signOut({ scope: 'local' })}>
+            <span>장부 잠그기</span>
+            <LogOut size={16} />
+          </button>
         </div>
       </aside>
 
@@ -163,12 +214,14 @@ function App() {
             <h1 className="page-title">
               {activeTab === 'dashboard' && '경영 실적 대시보드'}
               {activeTab === 'transactions' && '수입 및 지출 내역 관리'}
+              {activeTab === 'calendar' && '달력으로 보기'}
               {activeTab === 'budgets' && '부서별 예산 통제'}
               {activeTab === 'backup' && '백업 및 가계부 설정'}
             </h1>
             <p className="page-subtitle">
               {activeTab === 'dashboard' && `${companyInfo.name}의 실시간 자금 흐름과 재정 건전성을 확인합니다.`}
               {activeTab === 'transactions' && '모든 기업 자금의 입출금 거래 기록을 상세히 확인하고 관리합니다.'}
+              {activeTab === 'calendar' && '날짜를 클릭해 해당 날의 거래 내역을 확인하고 바로 추가·수정할 수 있습니다.'}
               {activeTab === 'budgets' && '각 지출 카테고리별 정기 예산 한도를 점검하고 잔여 한도를 비교합니다.'}
               {activeTab === 'backup' && '가계부의 설정 정보를 갱신하거나 전체 거래 데이터를 가져오고 내보냅니다.'}
             </p>
@@ -198,6 +251,15 @@ function App() {
           />
         )}
 
+        {activeTab === 'calendar' && (
+          <CalendarView
+            transactions={transactions}
+            onEdit={handleOpenEditForm}
+            onDelete={deleteTransaction}
+            onAddForDate={handleOpenAddFormForDate}
+          />
+        )}
+
         {activeTab === 'budgets' && (
           <BudgetSettings
             budgets={budgets}
@@ -213,6 +275,8 @@ function App() {
             onExportCSV={exportToCSV}
             onExportJSON={exportToJSON}
             onImportJSON={importFromJSON}
+            legacyDataAvailable={legacyDataAvailable}
+            onMigrateLegacyData={migrateLegacyData}
             onResetData={resetData}
           />
         )}
@@ -221,9 +285,10 @@ function App() {
       {/* Add / Edit Transaction Form Modal */}
       <TransactionForm
         isOpen={isFormOpen}
-        onClose={() => setIsFormOpen(false)}
+        onClose={() => { setIsFormOpen(false); setPrefillDate(null); }}
         onSave={handleSaveTransaction}
         transaction={editingTx}
+        prefillDate={prefillDate}
       />
     </div>
   );
